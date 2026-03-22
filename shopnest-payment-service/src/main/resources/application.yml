@@ -1,0 +1,117 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║           PAYMENT SERVICE — CONFIGURATION                    ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+server:
+  port: 8084
+
+spring:
+  application:
+    name: shopnest-payment-service   # Registered under this name in Eureka
+
+  # ── MySQL Database ───────────────────────────────────────────
+  datasource:
+    # In dev: real MySQL. In tests: H2 in-memory (configured separately).
+    # ${ENV_VAR:default_value} = use env var if set, else use default
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/shopnest_payments
+         ?useSSL=false
+         &serverTimezone=UTC
+         &allowPublicKeyRetrieval=true
+         &createDatabaseIfNotExist=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+    # ── HikariCP Connection Pool ─────────────────────────────
+    # HikariCP = fastest JDBC connection pool (Spring Boot default)
+    hikari:
+      pool-name: PaymentServicePool
+      maximum-pool-size: 20      # Max 20 simultaneous DB connections
+      minimum-idle: 5            # Keep 5 idle connections ready
+      idle-timeout: 300000       # Close idle connections after 5 min
+      connection-timeout: 20000  # Fail after 20s if can't get connection
+      max-lifetime: 1200000      # Recycle connections every 20 min
+
+  # ── JPA / Hibernate ──────────────────────────────────────────
+  jpa:
+    hibernate:
+      # 'update'   = auto-alter tables when entity changes (DEV only!)
+      # 'validate' = check schema matches entities, fail if not (PROD)
+      # 'none'     = don't touch schema (use Flyway/Liquibase for PROD)
+      ddl-auto: update
+    show-sql: false              # Set to true for debugging SQL queries
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true         # Pretty-print SQL in logs when show-sql=true
+        jdbc:
+          batch_size: 50         # Batch INSERT/UPDATE for performance
+
+  # ── Redis ────────────────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}     # Empty = no password (local dev)
+      lettuce:                         # Lettuce = non-blocking Redis client
+        pool:
+          max-active: 10
+          max-idle: 5
+
+  # ── Kafka ─────────────────────────────────────────────────────
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Reliability settings:
+      acks: all          # Wait for ALL replicas to confirm write (safest)
+      retries: 3         # Retry 3 times on failure
+      properties:
+        enable.idempotence: true  # Kafka-level deduplication (prevents duplicate messages)
+
+# ── Eureka Client ────────────────────────────────────────────────
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_HOST:localhost}:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+    # Health check URL that Eureka uses to verify this instance is healthy
+    health-check-url-path: /actuator/health
+
+# ── Razorpay Credentials ──────────────────────────────────────────
+# NEVER commit real keys to Git!
+# In production: inject these as environment variables or use AWS Secrets Manager
+razorpay:
+  key-id: ${RAZORPAY_KEY_ID:rzp_test_yourkeyhere}
+  secret-key: ${RAZORPAY_SECRET_KEY:your_secret_here}
+  webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:your_webhook_secret}
+
+# ── SpringDoc / Swagger UI ─────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method   # Sort by HTTP method (GET, POST, etc.)
+
+# ── Actuator ──────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: when-authorized  # Only show DB/Redis health to admins
+
+# ── Logging ───────────────────────────────────────────────────────
+logging:
+  level:
+    com.shopnest.payment: DEBUG
+    org.springframework.kafka: INFO
+    com.razorpay: DEBUG   # See all Razorpay API calls in logs during dev
