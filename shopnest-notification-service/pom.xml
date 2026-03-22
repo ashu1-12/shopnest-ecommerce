@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║           SHOPNEST — NOTIFICATION SERVICE                    ║
+    ║                                                              ║
+    ║  All outbound communication to users:                        ║
+    ║    • Email (via SMTP / AWS SES)                              ║
+    ║    • SMS (via Twilio / MSG91)                                 ║
+    ║    • Push notifications (Firebase FCM)                       ║
+    ║                                                              ║
+    ║  Events consumed from Kafka:                                 ║
+    ║    user.registered       → Welcome email                    ║
+    ║    payment.success       → Payment confirmation email+SMS   ║
+    ║    payment.failed        → Payment failed email             ║
+    ║    order.shipped         → Shipment tracking email+SMS      ║
+    ║    order.delivered       → Delivery confirmation            ║
+    ║    payment.refund.*      → Refund status updates            ║
+    ║                                                              ║
+    ║  Port: 8086                                                  ║
+    ╚══════════════════════════════════════════════════════════════╝
+    -->
+
+    <parent>
+        <groupId>com.shopnest</groupId>
+        <artifactId>shopnest-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>shopnest-notification-service</artifactId>
+    <n>ShopNest Notification Service</n>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Kafka — consume all domain events and trigger notifications -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <!-- JavaMailSender — send HTML emails via SMTP or AWS SES -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+        <!-- Thymeleaf — HTML email templates (order confirmation, welcome, etc.)
+             Renders dynamic content into a clean HTML email body -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.thymeleaf.extras</groupId>
+            <artifactId>thymeleaf-extras-java8time</artifactId>
+            <version>3.0.4.RELEASE</version>
+        </dependency>
+
+        <!-- Twilio SDK — SMS sending (OTP, order status)
+             Alternative: MSG91 for India-specific, cheaper SMS -->
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>9.14.1</version>
+        </dependency>
+
+        <!-- Firebase Admin SDK — push notifications to Android/iOS -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.2.0</version>
+        </dependency>
+
+        <!-- Redis — store notification preferences & FCM device tokens -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- JPA — store notification history for audit -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
