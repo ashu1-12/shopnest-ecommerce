@@ -1,0 +1,37 @@
+# ─── Secrets (CRITICAL — never commit these) ─────────────────────
+.env
+*.env
+firebase-adminsdk.json
+*-credentials.json
+*.pem
+*.key
+
+# ─── Maven build output ───────────────────────────────────────────
+target/
+*.jar
+*.war
+
+# ─── IntelliJ IDEA ────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ─── Eclipse ──────────────────────────────────────────────────────
+.classpath
+.project
+.settings/
+
+# ─── VS Code ──────────────────────────────────────────────────────
+.vscode/
+
+# ─── OS files ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Logs ─────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Docker volumes (if mounted locally) ─────────────────────────
+docker/volumes/

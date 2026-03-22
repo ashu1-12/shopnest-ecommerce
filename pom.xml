@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    ╔══════════════════════════════════════════════════════════╗
+    ║              SHOPNEST — PARENT POM                       ║
+    ║  This is the ROOT of the entire multi-module project.    ║
+    ║  All child modules inherit versions and dependencies     ║
+    ║  from here. Think of it as a "company standards" file.   ║
+    ╚══════════════════════════════════════════════════════════╝
+    -->
+
+    <!-- ─── PARENT: Spring Boot BOM (Bill of Materials) ─────────────
+         By inheriting from spring-boot-starter-parent, we get:
+         • Pre-configured plugin versions
+         • Dependency version management (no version conflicts)
+         • Default resource filtering
+    ──────────────────────────────────────────────────────────────── -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.4</version>
+        <relativePath/> <!-- Fetch from Maven Central, not local -->
+    </parent>
+
+    <!-- ─── PROJECT IDENTITY ─────────────────────────────────────── -->
+    <groupId>com.shopnest</groupId>
+    <artifactId>shopnest-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging> <!-- IMPORTANT: 'pom' = this is a parent, not a JAR -->
+
+    <name>ShopNest Parent</name>
+    <description>Flipkart-style E-Commerce Platform — Multi-Module Project</description>
+
+    <!-- ─── ALL CHILD MODULES ─────────────────────────────────────
+         Maven will build these in the order listed.
+         Each module is a sub-folder with its own pom.xml.
+    ──────────────────────────────────────────────────────────────── -->
+    <modules>
+        <module>shopnest-eureka</module>           <!-- Service registry (must start first) -->
+        <module>shopnest-config-server</module>    <!-- Centralized config (start second) -->
+        <module>shopnest-gateway</module>          <!-- API Gateway (all traffic enters here) -->
+        <module>shopnest-user-service</module>     <!-- User auth, JWT, profiles -->
+        <module>shopnest-product-service</module>  <!-- Product catalog, search -->
+        <module>shopnest-order-service</module>    <!-- Cart, checkout, order lifecycle -->
+        <module>shopnest-payment-service</module>  <!-- Razorpay, UPI, EMI, wallets -->
+        <module>shopnest-inventory-service</module>  <!-- Stock, reservations -->
+        <module>shopnest-notification-service</module> <!-- Email, SMS, push -->
+        <module>shopnest-shipping-service</module> <!-- Tracking, logistics -->
+        <module>shopnest-review-service</module>   <!-- Ratings, reviews -->
+    </modules>
+
+    <!-- ─── GLOBAL PROPERTIES ────────────────────────────────────── -->
+    <properties>
+        <java.version>21</java.version>  <!-- Java 21 LTS — latest LTS version -->
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Spring Cloud version — must match Spring Boot version exactly -->
+        <!-- See: https://spring.io/projects/spring-cloud#adding-spring-cloud-to-an-existing-spring-boot-project -->
+        <spring-cloud.version>2023.0.1</spring-cloud.version>
+
+        <!-- Third-party library versions — centralized here so all modules use same version -->
+        <razorpay.version>1.4.5</razorpay.version>
+        <mapstruct.version>1.5.5.Final</mapstruct.version>
+        <lombok.version>1.18.32</lombok.version>
+        <jwt.version>0.12.5</jwt.version>
+        <springdoc.version>2.3.0</springdoc.version>
+        <testcontainers.version>1.19.7</testcontainers.version>
+    </properties>
+
+    <!-- ─── DEPENDENCY MANAGEMENT ────────────────────────────────────
+         This section does NOT add dependencies to child modules.
+         It only DECLARES VERSIONS so children can include a dependency
+         without specifying a version number. This prevents version drift.
+    ──────────────────────────────────────────────────────────────── -->
+    <dependencyManagement>
+        <dependencies>
+
+            <!-- Spring Cloud BOM — imports all Spring Cloud dependency versions -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>  <!-- 'import' = merge this BOM's versions into ours -->
+            </dependency>
+
+            <!-- Razorpay Java SDK — for payment integration (Indian payment gateway) -->
+            <dependency>
+                <groupId>com.razorpay</groupId>
+                <artifactId>razorpay-java</artifactId>
+                <version>${razorpay.version}</version>
+            </dependency>
+
+            <!-- MapStruct — compile-time DTO ↔ Entity mapper (better than ModelMapper) -->
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+
+            <!-- JJWT — JSON Web Token library for creating/verifying JWTs -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jwt.version}</version>
+            </dependency>
+
+            <!-- SpringDoc OpenAPI — generates Swagger UI automatically -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+
+            <!-- Testcontainers BOM — for spinning up real DBs during tests -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- ─── COMMON DEPENDENCIES ──────────────────────────────────────
+         These are added to EVERY child module automatically.
+         Keep this list small — only truly universal dependencies.
+    ──────────────────────────────────────────────────────────────── -->
+    <dependencies>
+
+        <!-- Lombok — eliminates boilerplate: @Getter, @Setter, @Builder, etc.
+             Added to ALL modules since every service uses entities/DTOs -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional> <!-- 'optional' = not transitive to downstream projects -->
+        </dependency>
+
+        <!-- Spring Boot Test — JUnit 5, Mockito, MockMvc for all modules -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <!-- ─── BUILD PLUGINS ────────────────────────────────────────── -->
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!-- Maven Compiler with annotation processors for Lombok + MapStruct -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <source>21</source>
+                        <target>21</target>
+                        <annotationProcessorPaths>
+                            <!-- Lombok must come BEFORE MapStruct in processor chain -->
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                            <path>
+                                <groupId>org.mapstruct</groupId>
+                                <artifactId>mapstruct-processor</artifactId>
+                                <version>${mapstruct.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+
+                <!-- Spring Boot Maven Plugin — creates fat JAR with embedded Tomcat -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <excludes>
+                            <!-- Lombok is compile-only, exclude from final JAR -->
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+</project>
