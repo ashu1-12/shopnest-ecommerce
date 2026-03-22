@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║          SHOPNEST — CONFIG SERVER                            ║
+    ║                                                              ║
+    ║  Centralized configuration management.                       ║
+    ║  Instead of each service having its own application.yml,    ║
+    ║  they all fetch config from here at startup.                 ║
+    ║                                                              ║
+    ║  Benefits:                                                   ║
+    ║    • One place to change DB URLs across all services         ║
+    ║    • Config stored in Git (versioned, auditable)             ║
+    ║    • Runtime config refresh without restart                  ║
+    ║    • Encrypted secrets (Razorpay keys, DB passwords)         ║
+    ║                                                              ║
+    ║  Port: 8888 (Spring Cloud Config default)                    ║
+    ╚══════════════════════════════════════════════════════════════╝
+    -->
+
+    <parent>
+        <groupId>com.shopnest</groupId>
+        <artifactId>shopnest-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>shopnest-config-server</artifactId>
+    <n>ShopNest Config Server</n>
+
+    <dependencies>
+        <!-- Spring Cloud Config Server — the core dependency -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-config-server</artifactId>
+        </dependency>
+
+        <!-- Eureka Client — Config Server itself registers with Eureka -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <!-- Actuator — exposes /actuator/bus-refresh for live config reload -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

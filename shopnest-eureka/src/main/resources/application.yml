@@ -1,0 +1,59 @@
+# ╔══════════════════════════════════════════════════════╗
+# ║         EUREKA SERVER — CONFIGURATION                ║
+# ║                                                      ║
+# ║  YAML is preferred over .properties in Spring Boot   ║
+# ║  because it supports nesting and is more readable.   ║
+# ╚══════════════════════════════════════════════════════╝
+
+server:
+  port: 8761  # Eureka's standard port — don't change this.
+              # All services default to registering on 8761.
+
+spring:
+  application:
+    name: shopnest-eureka  # Service name shown in Eureka dashboard
+
+eureka:
+  instance:
+    hostname: localhost
+
+  client:
+    # ── The two most important Eureka server settings ──────────
+    # This IS the registry. It should NOT register with itself.
+    # It should NOT try to fetch its own registry.
+    register-with-eureka: false  # "I am the server, not a client"
+    fetch-registry: false        # "I don't need to ask anyone for registry"
+
+    service-url:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+
+  server:
+    # Wait time before Eureka starts evicting instances.
+    # In dev, services restart often — give them time to re-register
+    # before being marked as DOWN.
+    wait-time-in-ms-when-sync-empty: 0  # Don't wait on startup (faster dev)
+
+    # ── Self-Preservation Mode ──────────────────────────────────
+    # In production: set to true.
+    # When network partition happens, Eureka won't evict healthy services
+    # just because it missed heartbeats.
+    # In development: false = Eureka instantly removes stopped services.
+    enable-self-preservation: false
+
+# ── Actuator endpoints ──────────────────────────────────────────
+# Exposes /actuator/health for Docker HEALTHCHECK and K8s liveness probe
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always
+
+# ── Logging ─────────────────────────────────────────────────────
+logging:
+  level:
+    com.netflix.eureka: WARN     # Eureka's own logs are very verbose
+    com.netflix.discovery: WARN  # Suppress discovery noise in console
+    com.shopnest: DEBUG          # Show all our own application logs

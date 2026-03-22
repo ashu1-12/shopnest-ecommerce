@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║          SHOPNEST — EUREKA SERVICE DISCOVERY                 ║
+    ║                                                              ║
+    ║  What is Eureka?                                             ║
+    ║  It's Netflix's Service Registry. Every microservice        ║
+    ║  registers itself here on startup with its host:port.       ║
+    ║  Other services ask Eureka "where is payment-service?"       ║
+    ║  instead of hardcoding IPs. This enables:                    ║
+    ║    • Dynamic scaling (add/remove instances anytime)          ║
+    ║    • Health-check based routing                              ║
+    ║    • No hardcoded service URLs                               ║
+    ║                                                              ║
+    ║  Startup Order: Eureka → Config → Gateway → Services         ║
+    ╚══════════════════════════════════════════════════════════════╝
+    -->
+
+    <!-- Inherit everything from parent POM -->
+    <parent>
+        <groupId>com.shopnest</groupId>
+        <artifactId>shopnest-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>shopnest-eureka</artifactId>
+    <packaging>jar</packaging>
+    <n>ShopNest Eureka Server</n>
+
+    <dependencies>
+
+        <!-- The ONLY dependency needed — this turns this app into a Eureka server -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+            <!--
+                Version comes from spring-cloud-dependencies BOM in parent POM.
+                We never need to specify versions for Spring Cloud dependencies.
+            -->
+        </dependency>
+
+        <!-- Spring Boot Actuator — exposes /actuator/health endpoint
+             Useful for Docker/K8s health checks and Eureka dashboard -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Creates executable JAR: java -jar shopnest-eureka.jar -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,42 @@
+server:
+  port: 8888   # Spring Cloud Config standard port
+
+spring:
+  application:
+    name: shopnest-config-server
+
+  cloud:
+    config:
+      server:
+        # ── Option A: Git backend (recommended for production) ──
+        # All service configs stored in a Git repo.
+        # Benefits: versioned, auditable, branch-per-environment.
+        git:
+          uri: ${CONFIG_GIT_URI:https://github.com/your-org/shopnest-config}
+          # For private repo, set credentials:
+          username: ${CONFIG_GIT_USERNAME:}
+          password: ${CONFIG_GIT_PASSWORD:}
+          # Clone config repo locally for faster reads
+          clone-on-start: true
+          default-label: main    # Git branch to read from
+
+        # ── Option B: Local filesystem (for local development) ──
+        # Comment out 'git' block above and uncomment this:
+        # native:
+        #   search-locations: classpath:/config-repo
+        # Also set: spring.profiles.active=native
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_HOST:localhost}:8761/eureka/
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, refresh, bus-refresh
+
+logging:
+  level:
+    org.springframework.cloud.config: DEBUG
