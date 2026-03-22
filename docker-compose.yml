@@ -1,0 +1,386 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║           SHOPNEST — DOCKER COMPOSE                              ║
+# ║                                                                  ║
+# ║  Starts the ENTIRE platform with one command:                    ║
+# ║    docker compose up -d                                          ║
+# ║                                                                  ║
+# ║  Startup order (depends_on ensures correct sequencing):          ║
+# ║  1. Infrastructure: MySQL, Redis, Kafka, Zookeeper               ║
+# ║  2. Eureka (service registry)                                    ║
+# ║  3. Config Server                                                ║
+# ║  4. All microservices (in parallel once infra is healthy)        ║
+# ║  5. API Gateway (last — needs all services registered)           ║
+# ║                                                                  ║
+# ║  Access points after startup:                                    ║
+# ║    API Gateway:      http://localhost:8080                        ║
+# ║    Eureka Dashboard: http://localhost:8761                        ║
+# ║    Kafka UI:         http://localhost:9090                        ║
+# ║    Swagger UIs:      http://localhost:808x/swagger-ui.html        ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+version: '3.8'
+
+# ── NAMED VOLUMES ─────────────────────────────────────────────────────
+# Volumes persist data between container restarts.
+# Without volumes, MySQL data is lost when container stops.
+volumes:
+  mysql-payment-data:
+  mysql-user-data:
+  mysql-product-data:
+  mysql-order-data:
+  mysql-inventory-data:
+  mysql-notification-data:
+  mysql-shipping-data:
+  mysql-review-data:
+  redis-data:
+  kafka-data:
+
+# ── NETWORKS ──────────────────────────────────────────────────────────
+# All services share one Docker network so they can reach each other
+# by container name (e.g., mysql-payment → hostname "mysql-payment")
+networks:
+  shopnest-network:
+    driver: bridge
+
+services:
+
+  # ════════════════════════════════════════════════════════════════
+  # INFRASTRUCTURE LAYER
+  # ════════════════════════════════════════════════════════════════
+
+  # ── Zookeeper ─────────────────────────────────────────────────
+  # Kafka requires Zookeeper for cluster coordination.
+  # (KRaft mode removes this requirement in newer Kafka — future upgrade)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: shopnest-zookeeper
+    networks: [ shopnest-network ]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka ─────────────────────────────────────────────────────
+  # Message broker — receives events from all services
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: shopnest-kafka
+    networks: [ shopnest-network ]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"    # For services on host machine (IDE run)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # INTERNAL = Docker network, EXTERNAL = host machine access
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # Pre-create our topics on startup
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:29092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Kafka UI ───────────────────────────────────────────────────
+  # Web UI to browse Kafka topics and messages (dev tool)
+  # Access: http://localhost:9090
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: shopnest-kafka-ui
+    networks: [ shopnest-network ]
+    ports:
+      - "9090:8080"
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: shopnest-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  # ── Redis ──────────────────────────────────────────────────────
+  # Used for: caching, sessions, OTPs, rate limiting, stock counters
+  redis:
+    image: redis:7.2-alpine
+    container_name: shopnest-redis
+    networks: [ shopnest-network ]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes   # Enable persistence
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MySQL Databases ────────────────────────────────────────────
+  # Each service gets its own database for true isolation.
+  # In production these would be separate RDS instances.
+  # Here they share one MySQL server but separate databases.
+
+  mysql:
+    image: mysql:8.0
+    container_name: shopnest-mysql
+    networks: [ shopnest-network ]
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-payment-data:/var/lib/mysql
+      # Init script creates all databases and grants permissions
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: shopnest
+      MYSQL_PASSWORD: shopnestpass
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Elasticsearch ─────────────────────────────────────────────
+  # Powers product search (used by product-service)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: shopnest-elasticsearch
+    networks: [ shopnest-network ]
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false     # Disable auth for local dev
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # Limit memory for local dev
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+
+  # ════════════════════════════════════════════════════════════════
+  # PLATFORM LAYER (Eureka + Config)
+  # ════════════════════════════════════════════════════════════════
+
+  eureka:
+    build:
+      context: .
+      dockerfile: shopnest-eureka/Dockerfile
+    container_name: shopnest-eureka
+    networks: [ shopnest-network ]
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  config-server:
+    build:
+      context: .
+      dockerfile: shopnest-config-server/Dockerfile
+    container_name: shopnest-config-server
+    networks: [ shopnest-network ]
+    ports:
+      - "8888:8888"
+    depends_on:
+      eureka:
+        condition: service_healthy
+    environment:
+      EUREKA_HOST: eureka
+
+  # ════════════════════════════════════════════════════════════════
+  # MICROSERVICES LAYER
+  # ════════════════════════════════════════════════════════════════
+
+  # Common environment variables reused across services
+  # Docker Compose YAML anchor — reduces repetition
+  x-service-common: &service-common
+    networks: [ shopnest-network ]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+
+  user-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-user-service/Dockerfile
+    container_name: shopnest-user-service
+    ports:
+      - "8081:8081"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: shopnest
+      DB_PASSWORD: shopnestpass
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+      JWT_SECRET: ${JWT_SECRET:-shopnest-jwt-secret-min-256-bits-long-change-in-production}
+
+  product-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-product-service/Dockerfile
+    container_name: shopnest-product-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      <<: *service-common
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: shopnest
+      DB_PASSWORD: shopnestpass
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+      ELASTICSEARCH_HOST: elasticsearch
+
+  order-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-order-service/Dockerfile
+    container_name: shopnest-order-service
+    ports:
+      - "8083:8083"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: shopnest
+      DB_PASSWORD: shopnestpass
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+
+  # ★ PAYMENT SERVICE — uses real Razorpay keys from .env file ★
+  payment-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-payment-service/Dockerfile
+    container_name: shopnest-payment-service
+    ports:
+      - "8084:8084"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: shopnest
+      DB_PASSWORD: shopnestpass
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+      # ⚠️  Set these in a .env file — NEVER hardcode!
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      RAZORPAY_SECRET_KEY: ${RAZORPAY_SECRET_KEY}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
+
+  inventory-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-inventory-service/Dockerfile
+    container_name: shopnest-inventory-service
+    ports:
+      - "8085:8085"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: shopnest
+      DB_PASSWORD: shopnestpass
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+
+  notification-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-notification-service/Dockerfile
+    container_name: shopnest-notification-service
+    ports:
+      - "8086:8086"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: shopnest
+      DB_PASSWORD: shopnestpass
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+
+  shipping-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-shipping-service/Dockerfile
+    container_name: shopnest-shipping-service
+    ports:
+      - "8087:8087"
+    environment:
+      DB_HOST: mysql
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+
+  review-service:
+    <<: *service-common
+    build:
+      context: .
+      dockerfile: shopnest-review-service/Dockerfile
+    container_name: shopnest-review-service
+    ports:
+      - "8088:8088"
+    environment:
+      DB_HOST: mysql
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      EUREKA_HOST: eureka
+
+  # ════════════════════════════════════════════════════════════════
+  # GATEWAY LAYER — starts last, routes to all services
+  # ════════════════════════════════════════════════════════════════
+
+  gateway:
+    build:
+      context: .
+      dockerfile: shopnest-gateway/Dockerfile
+    container_name: shopnest-gateway
+    networks: [ shopnest-network ]
+    ports:
+      - "8080:8080"    # ← The ONLY port exposed to the outside world
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+      - payment-service
+      - inventory-service
+    environment:
+      EUREKA_HOST: eureka
+      REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:-shopnest-jwt-secret-min-256-bits-long-change-in-production}
