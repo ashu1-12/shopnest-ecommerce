@@ -1,0 +1,194 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║           API GATEWAY — CONFIGURATION                        ║
+# ║                                                              ║
+# ║  This file defines:                                          ║
+# ║    1. How requests are routed to microservices               ║
+# ║    2. What filters run on each route                         ║
+# ║    3. Rate limiting, circuit breaker settings                ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+server:
+  port: 8080  # The single public-facing port for the entire platform
+
+spring:
+  application:
+    name: shopnest-gateway
+
+  # ── Redis (for rate limiting counters) ───────────────────────
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  cloud:
+    gateway:
+
+      # ── Global CORS ──────────────────────────────────────────
+      # Allow React frontend (port 3000) to call our backend.
+      # Without this, browsers block cross-origin requests.
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"   # React dev server
+              - "https://shopnest.com"    # Production domain
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+
+      # ── ROUTES ───────────────────────────────────────────────
+      # Each route = a mapping from URL pattern → microservice.
+      # 'lb://' prefix means: use Eureka load balancer to find the service.
+      # The service name (e.g., SHOPNEST-USER-SERVICE) must match
+      # what the service registers in Eureka.
+      routes:
+
+        # ── AUTH ROUTES (no JWT required) ────────────────────
+        - id: user-service-auth
+          uri: lb://SHOPNEST-USER-SERVICE
+          predicates:
+            - Path=/api/v1/auth/**   # Login, register, refresh token
+          filters:
+            # Strip the /api/v1 prefix before forwarding to service
+            # Gateway receives: /api/v1/auth/login
+            # Service receives:           /auth/login
+            - StripPrefix=2
+
+        # ── USER SERVICE (JWT required) ──────────────────────
+        - id: user-service
+          uri: lb://SHOPNEST-USER-SERVICE
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - StripPrefix=2
+            - name: AuthenticationFilter  # Our custom JWT filter (see filter/ package)
+
+        # ── PRODUCT SERVICE (public — no JWT for browsing) ──
+        - id: product-service-public
+          uri: lb://SHOPNEST-PRODUCT-SERVICE
+          predicates:
+            - Path=/api/v1/products/**
+            - Method=GET              # Only GET is public. POST/PUT/DELETE need auth.
+          filters:
+            - StripPrefix=2
+
+        - id: product-service-admin
+          uri: lb://SHOPNEST-PRODUCT-SERVICE
+          predicates:
+            - Path=/api/v1/products/**
+            - Method=POST,PUT,DELETE,PATCH
+          filters:
+            - StripPrefix=2
+            - name: AuthenticationFilter
+
+        # ── ORDER SERVICE ────────────────────────────────────
+        - id: order-service
+          uri: lb://SHOPNEST-ORDER-SERVICE
+          predicates:
+            - Path=/api/v1/orders/**,/api/v1/cart/**
+          filters:
+            - StripPrefix=2
+            - name: AuthenticationFilter
+            # Rate limit: max 20 orders per minute per user
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 30
+                key-resolver: "#{@userKeyResolver}"
+
+        # ── PAYMENT SERVICE ──────────────────────────────────
+        - id: payment-service
+          uri: lb://SHOPNEST-PAYMENT-SERVICE
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - StripPrefix=2
+            - name: AuthenticationFilter
+            # Stricter rate limit for payments: 5 per minute
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+                key-resolver: "#{@userKeyResolver}"
+            # Circuit breaker: if payment-service is slow/down
+            - name: CircuitBreaker
+              args:
+                name: paymentCircuitBreaker
+                fallbackUri: forward:/fallback/payment
+
+        # ── PAYMENT WEBHOOKS (no JWT — Razorpay calls this directly) ─
+        - id: payment-webhook
+          uri: lb://SHOPNEST-PAYMENT-SERVICE
+          predicates:
+            - Path=/api/v1/payments/webhook
+            - Method=POST
+          filters:
+            - StripPrefix=2
+            # NO AuthenticationFilter here — Razorpay doesn't send JWT
+
+        # ── INVENTORY SERVICE ────────────────────────────────
+        - id: inventory-service
+          uri: lb://SHOPNEST-INVENTORY-SERVICE
+          predicates:
+            - Path=/api/v1/inventory/**
+          filters:
+            - StripPrefix=2
+            - name: AuthenticationFilter
+
+        # ── SHIPPING SERVICE ─────────────────────────────────
+        - id: shipping-service
+          uri: lb://SHOPNEST-SHIPPING-SERVICE
+          predicates:
+            - Path=/api/v1/shipping/**
+          filters:
+            - StripPrefix=2
+            - name: AuthenticationFilter
+
+        # ── REVIEW SERVICE ───────────────────────────────────
+        - id: review-service
+          uri: lb://SHOPNEST-REVIEW-SERVICE
+          predicates:
+            - Path=/api/v1/reviews/**
+          filters:
+            - StripPrefix=2
+
+      # ── Default Filters applied to ALL routes ────────────────
+      default-filters:
+        # Log all requests (request ID for tracing)
+        - AddRequestHeader=X-Gateway-Source, shopnest-gateway
+
+# ── Eureka Client Config ────────────────────────────────────────
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true  # Use IP instead of hostname (better in Docker/K8s)
+
+# ── JWT Secret Key (must match what user-service uses to sign tokens) ─
+# In production: use environment variable or AWS Secrets Manager
+# NEVER commit real secrets to Git!
+app:
+  jwt:
+    secret: ${JWT_SECRET:shopnest-super-secret-key-change-in-production-min-256-bits}
+
+# ── Actuator ───────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, gateway
+
+# ── Logging ─────────────────────────────────────────────────────
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG  # See routing decisions
+    com.shopnest: DEBUG

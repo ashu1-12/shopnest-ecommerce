@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║              SHOPNEST — API GATEWAY                          ║
+    ║                                                              ║
+    ║  What is the API Gateway?                                    ║
+    ║  The single entry point for ALL client requests.             ║
+    ║  Like the front door of a mall — you enter here,            ║
+    ║  then get directed to the right shop (service).              ║
+    ║                                                              ║
+    ║  Responsibilities:                                           ║
+    ║    • Route: /api/users/** → user-service:8081                ║
+    ║    • Route: /api/products/** → product-service:8082          ║
+    ║    • Route: /api/orders/** → order-service:8083              ║
+    ║    • Route: /api/payments/** → payment-service:8084          ║
+    ║    • JWT Authentication filter (verify token on every req)   ║
+    ║    • Rate limiting (prevent abuse)                           ║
+    ║    • CORS configuration (allow React frontend)               ║
+    ║    • Circuit breaker (fallback when service is down)         ║
+    ║                                                              ║
+    ║  Port: 8080 — The ONLY port exposed to the internet          ║
+    ╚══════════════════════════════════════════════════════════════╝
+    -->
+
+    <parent>
+        <groupId>com.shopnest</groupId>
+        <artifactId>shopnest-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>shopnest-gateway</artifactId>
+    <n>ShopNest API Gateway</n>
+
+    <dependencies>
+
+        <!-- Spring Cloud Gateway — reactive, non-blocking gateway
+             IMPORTANT: Uses WebFlux (reactive), NOT Spring MVC.
+             Do NOT add spring-boot-starter-web here — they conflict! -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway</artifactId>
+        </dependency>
+
+        <!-- Eureka Client — so gateway can discover service locations
+             instead of hardcoding http://localhost:8081 etc. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <!-- Circuit Breaker with Resilience4J
+             When payment-service is down, return a fallback response
+             instead of cascading failure to the whole system -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-reactor-resilience4j</artifactId>
+        </dependency>
+
+        <!-- Rate Limiter with Redis
+             Limit: 100 requests/sec per IP to prevent DDoS/abuse
+             Redis stores the request counters -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
+        </dependency>
+
+        <!-- JWT for token validation in the gateway filter -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Actuator — health checks for load balancer/K8s -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
